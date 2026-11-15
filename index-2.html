@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wijnkelder">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#6b1e2e">
+<title>Wijnkelder</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#faf7f5;color:#222;-webkit-text-size-adjust:100%}
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#6b1e2e;color:#fff;position:sticky;top:0;z-index:1;padding-top:calc(12px + env(safe-area-inset-top))}
+  header h1{font-size:20px;margin:0}
+  header button{background:none;border:0;color:#fff;font-size:22px;cursor:pointer}
+  .bar{display:flex;gap:8px;padding:10px 16px 0}
+  input,select,textarea,button{font:inherit}
+  input,select,textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;background:#fff;font-size:16px}
+  #search{flex:1;min-width:0}
+  #filter{width:auto}
+  #catFilter{margin-top:8px}
+  #stats{padding:6px 16px 0;color:#666;font-size:14px}
+  main{padding:8px 16px 110px;display:grid;gap:10px}
+  .card{display:flex;gap:12px;background:#fff;border-radius:12px;padding:10px;box-shadow:0 1px 3px #0002;cursor:pointer}
+  .card.gone{opacity:.6}
+  .thumb{width:64px;height:84px;object-fit:cover;border-radius:8px;background:#eee;flex:none}
+  .card b{display:block;font-size:16px}
+  .meta{font-size:13px;color:#555;margin-top:2px;display:block}
+  .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;color:#fff;margin-top:4px}
+  .nu{background:#2e7d32}.later{background:#1565c0}.over{background:#8d6e63}.onbekend{background:#999}.op{background:#455a64}
+  .tag{display:inline-block;background:#f3e5e8;color:#6b1e2e;border-radius:6px;padding:1px 6px;font-size:12px;margin:4px 4px 0 0}
+  .fab{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;border:0;background:#6b1e2e;color:#fff;font-size:30px;box-shadow:0 2px 8px #0005;cursor:pointer}
+  dialog{width:min(94vw,520px);border:0;border-radius:14px;padding:18px;max-height:90vh;box-sizing:border-box}
+  dialog::backdrop{background:#0008}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  label{display:block;font-size:13px;color:#555;margin-top:8px}
+  .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+  .btn{padding:10px 14px;border-radius:8px;border:0;background:#eee;cursor:pointer}
+  .small{padding:6px 10px;font-size:13px}
+  .primary{background:#6b1e2e;color:#fff}.danger{background:#c62828;color:#fff}.ai{background:#37474f;color:#fff}.drink{background:#2e7d32;color:#fff}
+  .chip{border:1px solid #6b1e2e;background:#fff;color:#6b1e2e;border-radius:99px;padding:6px 12px;margin:4px 4px 0 0;cursor:pointer}
+  .chip.on{background:#6b1e2e;color:#fff}
+  #preview{width:100%;max-height:260px;object-fit:contain;border-radius:8px;margin-top:8px;display:none;background:#eee}
+  .msg{font-size:14px;color:#c62828;min-height:1.2em;margin-top:8px}
+  h2{margin:0 0 4px;font-size:18px}
+  .hint{font-size:12px;color:#777}
+  .empty{text-align:center;color:#888;padding:40px 0}
+  ul{list-style:none;padding:0;margin:8px 0}
+  #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));background:#333;color:#fff;padding:10px 16px;border-radius:10px;display:none;font-size:14px;z-index:5}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Wijnkelder</h1>
+  <button id="btnSettings" title="Instellingen">⚙</button>
+</header>
+
+<div class="bar">
+  <input id="search" type="search" placeholder="Zoek op naam, druif, regio...">
+  <select id="filter">
+    <option value="">Alles</option>
+    <option value="nu">Nu drinkbaar</option>
+    <option value="later">Nog niet</option>
+    <option value="over">Over de top</option>
+    <option value="onbekend">Onbekend</option>
+    <option value="op">Opgedronken</option>
+  </select>
+</div>
+<div class="bar"><select id="catFilter"><option value="">Alle categorieën</option></select></div>
+<p id="stats"></p>
+<main id="list"></main>
+<button class="fab" id="btnAdd" title="Fles toevoegen">+</button>
+<div id="toast"></div>
+
+<!-- Fles toevoegen / bewerken -->
+<dialog id="dlgWine">
+  <form id="formWine">
+    <h2 id="formTitle">Fles toevoegen</h2>
+
+    <label>Foto van de fles of het etiket</label>
+    <input type="file" id="foto" accept="image/*" capture="environment">
+    <img id="preview" alt="">
+
+    <div class="btns" style="justify-content:stretch">
+      <button type="button" class="btn ai" id="btnAI" style="flex:1">✨ Vul lege velden in met AI</button>
+    </div>
+    <div class="msg" id="aiMsg"></div>
+
+    <label>Naam</label>
+    <input name="naam" required>
+
+    <div class="row">
+      <div><label>Producent</label><input name="producent"></div>
+      <div><label>Jaargang</label><input name="jaargang" inputmode="numeric"></div>
+    </div>
+    <div class="row">
+      <div><label>Land</label><input name="land"></div>
+      <div><label>Regio</label><input name="regio"></div>
+    </div>
+    <div class="row">
+      <div><label>Type</label>
+        <select name="type">
+          <option value="">–</option>
+          <option>rood</option><option>wit</option><option>rosé</option><option>mousserend</option><option>anders</option>
+        </select>
+      </div>
+      <div><label>Druif(sen)</label><input name="druif"></div>
+    </div>
+    <div class="row">
+      <div><label>Drinkvenster van (jaar)</label><input name="drink_van" inputmode="numeric"></div>
+      <div><label>Drinkvenster tot (jaar)</label><input name="drink_tot" inputmode="numeric"></div>
+    </div>
+    <div class="row">
+      <div><label>Aantal op voorraad</label><input name="aantal" inputmode="numeric" value="1"></div>
+      <div><label>Locatie (kast/rek)</label><input name="locatie"></div>
+    </div>
+
+    <label>Categorieën</label>
+    <div id="catPicker"></div>
+
+    <label>Past bij (eten)</label>
+    <input name="eten" placeholder="bv. lam, kaas, pasta">
+
+    <label>Vivino-link (plak de link uit de Vivino-app)</label>
+    <input name="vivino" type="url" placeholder="https://www.vivino.com/...">
+
+    <div class="row">
+      <div><label>Aankoopprijs (€)</label><input name="prijs" inputmode="decimal"></div>
+      <div><label>Waarde-indicatie</label><input name="waarde"></div>
+    </div>
+    <label>Notities / toelichting</label>
+    <textarea name="notities" rows="3"></textarea>
+
+    <div class="msg" id="formMsg"></div>
+    <div class="btns">
+      <button type="button" class="btn danger" id="btnDelete" style="display:none;margin-right:auto">Verwijderen</button>
+      <button type="button" class="btn drink" id="btnDrink" style="display:none">🍷 Fles opgedronken</button>
+      <button type="button" class="btn" id="btnCancel">Annuleren</button>
+      <button type="submit" class="btn primary">Opslaan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Instellingen -->
+<dialog id="dlgSettings">
+  <h2>Instellingen</h2>
+  <label>Anthropic API-sleutel</label>
+  <input type="password" id="apiKey" placeholder="sk-ant-...">
+  <p class="hint">De sleutel blijft alleen op dit toestel opgeslagen. Hij is nodig voor de AI-functies.</p>
+  <label>AI-model</label>
+  <select id="modelSelect">
+    <option value="claude-haiku-5-5">Snel en goedkoop (Haiku)</option>
+    <option value="claude-sonnet-5-5">Sterker, kent meer wijnen (Sonnet)</option>
+  </select>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:12px">
+    <input type="checkbox" id="webSearch" style="width:auto"> Webzoeken aan (AI zoekt de wijn op, kost extra)
+  </label>
+  <div class="btns">
+    <button class="btn" id="btnSaveKey">Instellingen opslaan</button>
+  </div>
+
+  <hr>
+  <h2>Categorieën</h2>
+  <p class="hint">Maak zelf categorieën aan, zoals rood droog of champagne.</p>
+  <div class="btns" style="justify-content:flex-start">
+    <button class="btn" id="btnCats">Categorieën beheren</button>
+  </div>
+
+  <hr>
+  <h2>Back-up</h2>
+  <p class="hint">Exporteer je hele kelder (incl. foto's) naar een bestand, of importeer een eerdere back-up.</p>
+  <div class="btns" style="justify-content:flex-start">
+    <button class="btn primary" id="btnExport">Exporteren</button>
+    <label class="btn" style="margin:0">Importeren<input type="file" id="importFile" accept="application/json" hidden></label>
+  </div>
+  <div class="msg" id="settingsMsg"></div>
+  <div class="btns">
+    <button class="btn" id="btnCloseSettings">Sluiten</button>
+  </div>
+</dialog>
+
+<!-- Categorieën beheren -->
+<dialog id="dlgCats">
+  <h2>Categorieën</h2>
+  <div class="row" style="grid-template-columns:1fr auto">
+    <input id="newCat" placeholder="Nieuwe categorie, bv. rood droog">
+    <button class="btn primary" id="btnAddCat">Toevoegen</button>
+  </div>
+  <ul id="catItems"></ul>
+  <div class="btns">
+    <button class="btn" id="btnCloseCats">Sluiten</button>
+  </div>
+</dialog>
+
+<script>
+// ---------- Opslag (IndexedDB, blijft op het toestel) ----------
+const DB_NAME = 'wijnkelder', STORE = 'wijnen';
+let dbPromise = null;
+function openDB() {
+  if (!dbPromise) dbPromise = new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return dbPromise;
+}
+async function allWines() {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(STORE).objectStore(STORE).getAll();
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function putWine(w) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const t = db.transaction(STORE, 'readwrite');
+    t.objectStore(STORE).put(w);
+    t.oncomplete = () => res();
+    t.onerror = () => rej(t.error);
+  });
+}
+async function delWine(id) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const t = db.transaction(STORE, 'readwrite');
+    t.objectStore(STORE).delete(id);
+    t.oncomplete = () => res();
+    t.onerror = () => rej(t.error);
+  });
+}
+
+// ---------- Categorieën (zelf aan te maken, opgeslagen op dit toestel) ----------
+function getCats() {
+  try { return JSON.parse(localStorage.getItem('wk_cats') || '[]'); } catch { return []; }
+}
+function saveCats(arr) {
+  localStorage.setItem('wk_cats', JSON.stringify(arr));
+}
+// Categorieën van een wijn als lijst (ondersteunt ook oude tekstwaarden)
+function wineCats(w) {
+  if (Array.isArray(w.categorieen)) return w.categorieen;
+  return String(w.categorieen || '').split(',').map(x => x.trim()).filter(Boolean);
+}
+
+// ---------- Hulpfuncties ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const NOW = new Date().getFullYear();
+const isGone = w => (parseInt(w.aantal) || 0) <= 0;
+
+function drinkStatus(w) {
+  const van = parseInt(w.drink_van), tot = parseInt(w.drink_tot);
+  if (!van && !tot) return 'onbekend';
+  if (van && NOW < van) return 'later';
+  if (tot && NOW > tot) return 'over';
+  return 'nu';
+}
+const statusLabel = { nu: 'Nu drinkbaar', later: 'Nog niet', over: 'Over de top', onbekend: 'Onbekend' };
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.display = 'none', 2500);
+}
+
+// Foto verkleinen zodat hij snel laadt en weinig opslag kost
+function resizeImage(file, max = 1000) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+// ---------- Lijst ----------
+let wines = [];
+async function refresh() {
+  wines = await allWines();
+  render();
+}
+function updateCatFilter() {
+  const set = new Set(getCats());
+  wines.forEach(w => wineCats(w).forEach(c => set.add(c)));
+  const cats = [...set].sort((a, b) => a.localeCompare(b, 'nl'));
+  const sel = $('catFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Alle categorieën</option>' + cats.map(c => `<option>${esc(c)}</option>`).join('');
+  sel.value = cats.includes(cur) ? cur : '';
+}
+function render() {
+  updateCatFilter();
+  const q = $('search').value.trim().toLowerCase();
+  const st = $('filter').value;
+  const cat = $('catFilter').value;
+
+  const list = wines
+    .filter(w => st === 'op' ? isGone(w) : !isGone(w))
+    .filter(w => !st || st === 'op' || drinkStatus(w) === st)
+    .filter(w => !cat || wineCats(w).includes(cat))
+    .filter(w => !q || [w.naam, w.producent, w.druif, w.regio, w.land, w.type, w.locatie, wineCats(w).join(' ')]
+      .some(v => String(v ?? '').toLowerCase().includes(q)))
+    .sort((a, b) => String(a.naam).localeCompare(String(b.naam), 'nl'));
+
+  const voorraad = wines.filter(w => !isGone(w)).reduce((n, w) => n + (parseInt(w.aantal) || 0), 0);
+  const opgedronken = wines.reduce((n, w) => n + (w.opgedronken ? w.opgedronken.length : 0), 0);
+  $('stats').textContent = `${voorraad} flessen op voorraad · ${opgedronken} opgedronken`;
+
+  if (!list.length) {
+    $('list').innerHTML = `<div class="empty">${wines.length ? 'Geen wijnen gevonden.' : 'Nog geen wijnen. Tik op + om er een toe te voegen.'}</div>`;
+    return;
+  }
+  $('list').innerHTML = list.map(w => {
+    const gone = isGone(w);
+    const thumb = w.foto ? `<img class="thumb" src="${w.foto}" alt="">` : `<div class="thumb"></div>`;
+    const st2 = drinkStatus(w);
+    const venster = (w.drink_van || w.drink_tot) ? `${w.drink_van || '?'} – ${w.drink_tot || '?'}` : '';
+    const aantalTekst = gone
+      ? `Opgedronken${w.opgedronken?.length ? ' · laatst ' + new Date(w.opgedronken.at(-1)).toLocaleDateString('nl-NL') : ''}`
+      : `${w.aantal ?? 1}× op voorraad${w.locatie ? ' · ' + esc(w.locatie) : ''}`;
+    return `<div class="card ${gone ? 'gone' : ''}" data-id="${esc(w.id)}">
+      ${thumb}
+      <div style="min-width:0;flex:1">
+        <b>${esc(w.naam)}</b>
+        <span class="meta">${esc([w.producent, w.jaargang].filter(Boolean).join(' · '))}</span>
+        <span class="meta">${esc([w.druif, w.regio || w.land].filter(Boolean).join(' · '))}</span>
+        <span class="meta">${aantalTekst}</span>
+        ${gone ? '<span class="badge op">Opgedronken</span>' : `<span class="badge ${st2}">${statusLabel[st2]}${venster ? ' ' + venster : ''}</span>`}
+        <div>${wineCats(w).map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
+        ${w.vivino ? `<a class="meta" href="${esc(w.vivino)}" target="_blank" rel="noopener" style="color:#6b1e2e">Vivino ↗</a>` : ''}
+        ${gone ? '' : `<button class="btn drink small" data-drink="${esc(w.id)}" style="margin-top:6px">🍷 Opgedronken</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+$('list').addEventListener('click', async e => {
+  if (e.target.closest('a')) return;
+  const drink = e.target.closest('[data-drink]');
+  if (drink) {
+    e.stopPropagation();
+    await drinkBottle(drink.dataset.drink);
+    return;
+  }
+  const card = e.target.closest('.card');
+  if (card) openForm(wines.find(w => w.id === card.dataset.id));
+});
+$('search').addEventListener('input', render);
+$('filter').addEventListener('change', render);
+$('catFilter').addEventListener('change', render);
+
+// Eén fles opgedronken: aantal -1 en datum bijschrijven
+let drinkBusy = false;
+async function drinkBottle(id) {
+  if (drinkBusy) return;
+  const w = wines.find(x => x.id === id);
+  if (!w || isGone(w)) return;
+  if (!confirm(`Eén fles van "${w.naam}" opgedronken?`)) return;
+  drinkBusy = true;
+  try {
+    w.aantal = Math.max(0, (parseInt(w.aantal) || 0) - 1);
+    w.opgedronken = [...(w.opgedronken || []), new Date().toISOString()];
+    await putWine(w);
+    await refresh();
+    toast(w.aantal === 0 ? `${w.naam}: laatste fles opgedronken` : `${w.naam}: 1 fles opgedronken`);
+  } finally {
+    drinkBusy = false;
+  }
+}
+
+// ---------- Formulier ----------
+const form = $('formWine');
+let currentPhoto = null;
+let editingId = null;
+let selectedCats = [];
+
+function openForm(w) {
+  form.reset();
+  editingId = w ? w.id : null;
+  currentPhoto = w ? (w.foto || null) : null;
+  selectedCats = w ? wineCats(w).slice() : [];
+  $('formTitle').textContent = w ? 'Fles bewerken' : 'Fles toevoegen';
+  $('btnDelete').style.display = w ? '' : 'none';
+  $('btnDrink').style.display = (w && !isGone(w)) ? '' : 'none';
+  $('formMsg').textContent = '';
+  $('aiMsg').textContent = '';
+  $('foto').value = '';
+  if (w) {
+    for (const el of form.elements) {
+      if (el.name && w[el.name] !== undefined && el.name !== 'categorieen') el.value = w[el.name];
+    }
+  } else {
+    form.aantal.value = 1;
+  }
+  renderCatPicker();
+  showPreview(currentPhoto);
+  $('dlgWine').showModal();
+}
+function renderCatPicker() {
+  const cats = [...new Set([...getCats(), ...selectedCats])];
+  $('catPicker').innerHTML = cats.length
+    ? cats.map(c => `<button type="button" class="chip ${selectedCats.includes(c) ? 'on' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')
+    : '<p class="hint">Nog geen categorieën. Maak ze aan via ⚙ → Categorieën.</p>';
+}
+$('catPicker').addEventListener('click', e => {
+  const b = e.target.closest('[data-cat]');
+  if (!b) return;
+  const c = b.dataset.cat;
+  selectedCats = selectedCats.includes(c) ? selectedCats.filter(x => x !== c) : [...selectedCats, c];
+  renderCatPicker();
+});
+function showPreview(src) {
+  const p = $('preview');
+  p.src = src || '';
+  p.style.display = src ? 'block' : 'none';
+}
+$('btnAdd').onclick = () => openForm(null);
+$('btnCancel').onclick = () => $('dlgWine').close();
+$('btnDrink').onclick = async () => {
+  if (!editingId) return;
+  await drinkBottle(editingId);
+  $('dlgWine').close();
+};
+
+$('foto').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  currentPhoto = await resizeImage(file);
+  showPreview(currentPhoto);
+});
+
+// AI: leest het etiket en vult lege velden in
+const FIELD_MAP = {
+  naam: 'naam', producent: 'producent', jaargang: 'jaargang', land: 'land', regio: 'regio',
+  type: 'type', druif: 'druif', drink_van: 'drink_van', drink_tot: 'drink_tot',
+  waarde_indicatie: 'waarde', toelichting: 'notities', eten_bij: 'eten'
+};
+$('btnAI').onclick = async () => {
+  const btn = $('btnAI');
+  btn.disabled = true;
+  $('aiMsg').textContent = 'Bezig met analyseren...';
+  try {
+    const hint = ['naam','producent','jaargang','land','regio','type','druif','locatie']
+      .map(k => form[k] && form[k].value ? `${k}: ${form[k].value}` : null).filter(Boolean).join(', ');
+    const { result, raw } = await askAI(currentPhoto, hint);
+    let filled = 0;
+    for (const [k, field] of Object.entries(FIELD_MAP)) {
+      const val = result[k];
+      if (val === null || val === undefined || val === '') continue;
+      const el = form[field];
+      if (el && !el.value) { el.value = val; filled++; }
+    }
+    // Categorie: kies uit de eigen lijst, of voeg een nieuwe toe als die nog niet bestaat
+    if (result.categorie && !selectedCats.length) {
+      const c = String(result.categorie).trim();
+      if (c) {
+        const cats = getCats();
+        const match = cats.find(x => x.toLowerCase() === c.toLowerCase()) || c;
+        if (!cats.some(x => x.toLowerCase() === c.toLowerCase())) saveCats([...cats, c]);
+        selectedCats = [match];
+        renderCatPicker();
+        filled++;
+      }
+    }
+    const info = `${currentPhoto ? 'Met foto' : 'Zonder foto'} · ${filled} velden ingevuld.`;
+    if (filled === 0) {
+      $('aiMsg').textContent = `${info} De AI kon niets bruikbaars invullen. Antwoord: ${raw.slice(0, 300)}`;
+    } else {
+      $('aiMsg').textContent = `${info} Controleer de gegevens voordat je opslaat.`;
+    }
+  } catch (err) {
+    $('aiMsg').textContent = 'Fout: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+async function askAI(photoDataUrl, hint) {
+  const key = localStorage.getItem('anthropic_key');
+  if (!key) throw new Error('Vul eerst je API-sleutel in bij de instellingen (⚙).');
+  const model = localStorage.getItem('anthropic_model') || 'claude-haiku-5-5';
+  const webSearch = localStorage.getItem('anthropic_websearch') !== 'false';
+
+  const content = [];
+  if (photoDataUrl) {
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: photoDataUrl.split(',')[1] } });
+  }
+  content.push({ type: 'text', text:
+`Je helpt bij het bijhouden van een wijnkelder. ${photoDataUrl ? 'Lees het etiket op de foto zorgvuldig (producent, wijnnaam, jaargang, regio, alcoholpercentage). ' : ''}Bekende gegevens: ${hint || 'geen'}.
+${webSearch ? 'Als je de wijn niet direct herkent, zoek dan op het web naar de producent en wijnnaam om de druif, regio en drinkvenster te bepalen, en zoek naar reviews en foodpairing-adviezen voor deze wijn. ' : ''}Geef je antwoord als JSON-object (je mag er één korte zin voor zetten) met deze velden:
+naam, producent, jaargang (getal of null), land, regio, type (rood/wit/rosé/mousserend/anders),
+druif (bij blends meerdere gescheiden met komma), drink_van (jaar of null), drink_tot (jaar of null),
+waarde_indicatie (korte tekst, bijv. "± €15–€20, schatting" of null), toelichting (korte tekst over druif, stijl en drinkvenster),
+categorie (kies de best passende categorie uit deze lijst: ${getCats().join(', ') || 'nog geen lijst'}; past niets, geef dan een korte nieuwe categorie zoals "rood droog", "rood krachtig", "wit droog", "champagne", "rosé" of "zoet"),
+eten_bij (korte komma-gescheiden lijst van gerechten die goed passen, op basis van reviews en foodpairing-adviezen, of null).
+Geef altijd je beste inschatting, ook als je niet zeker bent, en zet de onzekerheid in de toelichting. Gebruik null alleen als je echt niets kunt bepalen.`});
+
+  const body = { model, max_tokens: 900, messages: [{ role: 'user', content }] };
+  if (webSearch) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`API gaf fout ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  const raw = j.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Geen JSON in antwoord: ' + raw.slice(0, 200));
+  return { result: JSON.parse(m[0]), raw };
+}
+
+// Opslaan
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const existing = editingId ? wines.find(x => x.id === editingId) : null;
+  const fd = new FormData(form);
+  const w = { id: editingId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) };
+  for (const [k, v] of fd.entries()) w[k] = String(v).trim();
+  const n = parseInt(w.aantal);
+  w.aantal = isNaN(n) ? 1 : n;
+  w.jaargang = w.jaargang || '';
+  w.categorieen = selectedCats.slice();
+  w.foto = currentPhoto || null;
+  w.vivino = (w.vivino || '').trim();
+  w.opgedronken = existing ? (existing.opgedronken || []) : [];
+  w.toegevoegd = existing ? existing.toegevoegd : new Date().toISOString();
+  w.bijgewerkt = new Date().toISOString();
+  if (!w.naam) { $('formMsg').textContent = 'Vul een naam in.'; return; }
+  try {
+    await putWine(w);
+    // nieuwe categorieën uit een import of oude invoer toevoegen aan de lijst
+    const cats = getCats();
+    const missing = selectedCats.filter(c => !cats.includes(c));
+    if (missing.length) saveCats([...cats, ...missing]);
+    $('dlgWine').close();
+    await refresh();
+  } catch (err) {
+    $('formMsg').textContent = 'Opslaan mislukt: ' + err.message;
+  }
+});
+
+$('btnDelete').onclick = async () => {
+  if (!editingId || !confirm('Deze fles verwijderen?')) return;
+  await delWine(editingId);
+  $('dlgWine').close();
+  refresh();
+};
+
+// ---------- Instellingen ----------
+$('btnSettings').onclick = () => {
+  $('apiKey').value = localStorage.getItem('anthropic_key') || '';
+  $('modelSelect').value = localStorage.getItem('anthropic_model') || 'claude-haiku-5-5';
+  $('webSearch').checked = localStorage.getItem('anthropic_websearch') !== 'false';
+  $('settingsMsg').textContent = '';
+  $('dlgSettings').showModal();
+};
+$('btnCloseSettings').onclick = () => $('dlgSettings').close();
+$('btnSaveKey').onclick = () => {
+  localStorage.setItem('anthropic_key', $('apiKey').value.trim());
+  localStorage.setItem('anthropic_model', $('modelSelect').value);
+  localStorage.setItem('anthropic_websearch', $('webSearch').checked ? 'true' : 'false');
+  $('settingsMsg').textContent = 'Instellingen opgeslagen op dit toestel.';
+};
+
+// Categorieën beheren
+function renderCatList() {
+  const cats = getCats();
+  $('catItems').innerHTML = cats.length
+    ? cats.map(c => `<li style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee"><span>${esc(c)}</span><button class="btn small" data-del="${esc(c)}">Verwijderen</button></li>`).join('')
+    : '<p class="hint">Nog geen categorieën. Voeg hierboven je eerste toe.</p>';
+}
+$('btnCats').onclick = () => { renderCatList(); $('dlgCats').showModal(); };
+$('btnCloseCats').onclick = () => { $('dlgCats').close(); render(); };
+function addCat() {
+  const v = $('newCat').value.trim();
+  if (!v) return;
+  const cats = getCats();
+  if (!cats.some(c => c.toLowerCase() === v.toLowerCase())) { cats.push(v); saveCats(cats); }
+  $('newCat').value = '';
+  renderCatList();
+}
+$('btnAddCat').onclick = addCat;
+$('newCat').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCat(); } });
+$('catItems').addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]');
+  if (!b) return;
+  const c = b.dataset.del;
+  if (!confirm(`Categorie "${c}" verwijderen? Hij wordt ook bij je wijnen weggehaald.`)) return;
+  saveCats(getCats().filter(x => x !== c));
+  for (const w of wines) {
+    const cats = wineCats(w);
+    if (cats.includes(c)) { w.categorieen = cats.filter(x => x !== c); await putWine(w); }
+  }
+  await refresh();
+  renderCatList();
+});
+
+$('btnExport').onclick = () => {
+  const data = JSON.stringify({ versie: 2, geexporteerd: new Date().toISOString(), categorieen: getCats(), wijnen: wines }, null, 2);
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wijnkelder-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  $('settingsMsg').textContent = 'Back-up gemaakt. Bewaar dit bestand veilig (bijvoorbeeld in iCloud Drive).';
+};
+
+$('importFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const items = Array.isArray(data) ? data : data.wijnen;
+    if (!Array.isArray(items)) throw new Error('Ongeldig bestand');
+    if (data.categorieen) {
+      const cats = getCats();
+      saveCats([...new Set([...cats, ...data.categorieen])]);
+    }
+    for (const w of items) if (w && w.id) await putWine(w);
+    $('settingsMsg').textContent = `${items.length} wijnen geïmporteerd.`;
+    refresh();
+  } catch (err) {
+    $('settingsMsg').textContent = 'Importeren mislukt: ' + err.message;
+  }
+  e.target.value = '';
+});
+
+// ---------- Start ----------
+refresh();
+</script>
+</body>
+</html>
