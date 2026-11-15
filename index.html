@@ -119,6 +119,9 @@
     <label>Categorieën</label>
     <div id="catPicker"></div>
 
+    <label>Past bij (eten)</label>
+    <input name="eten" placeholder="bv. lam, kaas, pasta">
+
     <label>Vivino-link (plak de link uit de Vivino-app)</label>
     <input name="vivino" type="url" placeholder="https://www.vivino.com/...">
 
@@ -361,14 +364,22 @@ $('filter').addEventListener('change', render);
 $('catFilter').addEventListener('change', render);
 
 // Eén fles opgedronken: aantal -1 en datum bijschrijven
+let drinkBusy = false;
 async function drinkBottle(id) {
+  if (drinkBusy) return;
   const w = wines.find(x => x.id === id);
   if (!w || isGone(w)) return;
-  w.aantal = Math.max(0, (parseInt(w.aantal) || 0) - 1);
-  w.opgedronken = [...(w.opgedronken || []), new Date().toISOString()];
-  await putWine(w);
-  await refresh();
-  toast(w.aantal === 0 ? `${w.naam}: laatste fles opgedronken` : `${w.naam}: 1 fles opgedronken`);
+  if (!confirm(`Eén fles van "${w.naam}" opgedronken?`)) return;
+  drinkBusy = true;
+  try {
+    w.aantal = Math.max(0, (parseInt(w.aantal) || 0) - 1);
+    w.opgedronken = [...(w.opgedronken || []), new Date().toISOString()];
+    await putWine(w);
+    await refresh();
+    toast(w.aantal === 0 ? `${w.naam}: laatste fles opgedronken` : `${w.naam}: 1 fles opgedronken`);
+  } finally {
+    drinkBusy = false;
+  }
 }
 
 // ---------- Formulier ----------
@@ -436,7 +447,7 @@ $('foto').addEventListener('change', async e => {
 const FIELD_MAP = {
   naam: 'naam', producent: 'producent', jaargang: 'jaargang', land: 'land', regio: 'regio',
   type: 'type', druif: 'druif', drink_van: 'drink_van', drink_tot: 'drink_tot',
-  waarde_indicatie: 'waarde', toelichting: 'notities'
+  waarde_indicatie: 'waarde', toelichting: 'notities', eten_bij: 'eten'
 };
 $('btnAI').onclick = async () => {
   const btn = $('btnAI');
@@ -452,6 +463,18 @@ $('btnAI').onclick = async () => {
       if (val === null || val === undefined || val === '') continue;
       const el = form[field];
       if (el && !el.value) { el.value = val; filled++; }
+    }
+    // Categorie: kies uit de eigen lijst, of voeg een nieuwe toe als die nog niet bestaat
+    if (result.categorie && !selectedCats.length) {
+      const c = String(result.categorie).trim();
+      if (c) {
+        const cats = getCats();
+        const match = cats.find(x => x.toLowerCase() === c.toLowerCase()) || c;
+        if (!cats.some(x => x.toLowerCase() === c.toLowerCase())) saveCats([...cats, c]);
+        selectedCats = [match];
+        renderCatPicker();
+        filled++;
+      }
     }
     const info = `${currentPhoto ? 'Met foto' : 'Zonder foto'} · ${filled} velden ingevuld.`;
     if (filled === 0) {
@@ -478,10 +501,12 @@ async function askAI(photoDataUrl, hint) {
   }
   content.push({ type: 'text', text:
 `Je helpt bij het bijhouden van een wijnkelder. ${photoDataUrl ? 'Lees het etiket op de foto zorgvuldig (producent, wijnnaam, jaargang, regio, alcoholpercentage). ' : ''}Bekende gegevens: ${hint || 'geen'}.
-${webSearch ? 'Als je de wijn niet direct herkent, zoek dan op het web naar de producent en wijnnaam om de druif, regio en drinkvenster te bepalen. ' : ''}Geef je antwoord als JSON-object (je mag er één korte zin voor zetten) met deze velden:
+${webSearch ? 'Als je de wijn niet direct herkent, zoek dan op het web naar de producent en wijnnaam om de druif, regio en drinkvenster te bepalen, en zoek naar reviews en foodpairing-adviezen voor deze wijn. ' : ''}Geef je antwoord als JSON-object (je mag er één korte zin voor zetten) met deze velden:
 naam, producent, jaargang (getal of null), land, regio, type (rood/wit/rosé/mousserend/anders),
 druif (bij blends meerdere gescheiden met komma), drink_van (jaar of null), drink_tot (jaar of null),
-waarde_indicatie (korte tekst, bijv. "± €15–€20, schatting" of null), toelichting (korte tekst over druif, stijl en drinkvenster).
+waarde_indicatie (korte tekst, bijv. "± €15–€20, schatting" of null), toelichting (korte tekst over druif, stijl en drinkvenster),
+categorie (kies de best passende categorie uit deze lijst: ${getCats().join(', ') || 'nog geen lijst'}; past niets, geef dan een korte nieuwe categorie zoals "rood droog", "rood krachtig", "wit droog", "champagne", "rosé" of "zoet"),
+eten_bij (korte komma-gescheiden lijst van gerechten die goed passen, op basis van reviews en foodpairing-adviezen, of null).
 Geef altijd je beste inschatting, ook als je niet zeker bent, en zet de onzekerheid in de toelichting. Gebruik null alleen als je echt niets kunt bepalen.`});
 
   const body = { model, max_tokens: 900, messages: [{ role: 'user', content }] };
